@@ -17,22 +17,23 @@ const JWT_SECRET = crypto
   .update(`${APP_NAME}`)
   .digest("hex");
 
-// RSA key pair for algorithm-confusion attack (part 3)
+// RSA key pair
 const { privateKey, publicKey } = crypto.generateKeyPairSync("rsa", {
   modulusLength: 2048,
   publicKeyEncoding: { type: "spki", format: "pem" },
   privateKeyEncoding: { type: "pkcs8", format: "pem" },
 });
 
-// Store public key at a non-obvious path
-const pkHash = crypto
-  .createHash("sha1")
-  .update(publicKey)
-  .digest("hex")
-  .slice(0, 8);
-const PK_PATH = `/tmp/.cache/${pkHash}.key`;
+// Store keys at non-obvious paths
+const pubHash = crypto.createHash("sha1").update(publicKey).digest("hex").slice(0, 8);
+const privHash = crypto.createHash("sha1").update(privateKey).digest("hex").slice(0, 8);
+
+const PUB_KEY_PATH = `/tmp/.cache/${pubHash}.pub`;
+const PRIV_KEY_PATH = `/tmp/.cache/${privHash}.key`;
+
 fs.mkdirSync("/tmp/.cache", { recursive: true });
-fs.writeFileSync(PK_PATH, publicKey);
+fs.writeFileSync(PUB_KEY_PATH, publicKey);
+fs.writeFileSync(PRIV_KEY_PATH, privateKey);
 
 // ─────────────────────────────────────────────
 //  Flag assembly
@@ -52,7 +53,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, "public")));
 
-// Manual cookie parser middleware
+// Manual cookie parser
 app.use((req, res, next) => {
   req.cookies = {};
   const cookieHeader = req.headers.cookie;
@@ -68,7 +69,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Rate limiting state
+// Rate limiting
 const rateMap = new Map();
 setInterval(() => rateMap.clear(), 60000);
 
@@ -82,25 +83,23 @@ function rateLimit(req, res, next) {
   next();
 }
 
-// CRITICAL CHANGE: JWT verification that REJECTS HS256 for admin role
+// JWT verification - supports multiple algorithms
 function verifyJWT(req, res, next) {
   const token = req.cookies.token || "";
   if (!token) {
     return res.status(401).json({ error: "Unauthorized - No token cookie" });
   }
 
-  // Try RS256 first (the intended method for admin)
+  // Try RS256 first (for final admin access)
   try {
     req.user = jwt.verify(token, publicKey, { algorithms: ["RS256"] });
     req.authMethod = "RS256";
     return next();
   } catch (_) {}
 
-  // For operator tokens, allow HS256 but with restricted permissions
+  // Try HS256 (for operator and initial admin forge)
   try {
-    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ["HS256"] });
-    // Mark that this came from HS256 - will restrict admin access
-    req.user = decoded;
+    req.user = jwt.verify(token, JWT_SECRET, { algorithms: ["HS256"] });
     req.authMethod = "HS256";
     return next();
   } catch (_) {}
@@ -125,7 +124,6 @@ app.post("/api/auth", rateLimit, (req, res) => {
       role: "operator",
       iat: Math.floor(Date.now() / 1000),
     };
-    // Sign with HS256 only - this is the "weak" token
     const token = jwt.sign(payload, JWT_SECRET, {
       algorithm: "HS256",
       expiresIn: "2h",
@@ -141,7 +139,7 @@ app.post("/api/auth", rateLimit, (req, res) => {
     return res.json({ 
       success: true, 
       token: token,
-      message: "Login successful! Standard operator token issued."
+      message: "Login successful! Operator token issued."
     });
   }
   return res.status(401).json({ error: "Authentication failed" });
@@ -152,9 +150,7 @@ app.get("/api/token/info", verifyJWT, (req, res) => {
   res.json({
     user: req.user,
     auth_method: req.authMethod,
-    token_cookie_exists: !!req.cookies.token,
-    note: req.authMethod === "HS256" ? "Operator token - cannot access admin endpoint" : "RS256 token - full access granted",
-    required_for_admin: "Token must be signed with RS256 using the PUBLIC KEY as secret (algorithm confusion)"
+    token_cookie_exists: !!req.cookies.token
   });
 });
 
@@ -177,7 +173,7 @@ app.get("/api/fs/read", verifyJWT, rateLimit, (req, res) => {
     return res.status(400).json({ error: "Invalid encoding" });
   }
 
-  const allowed = [".txt", ".log", ".conf", ".key", ".pem", ".env"];
+  const allowed = [".txt", ".log", ".conf", ".key", ".pub", ".pem", ".env"];
   const ext = path.extname(decoded);
   if (ext && !allowed.includes(ext)) {
     return res.status(403).json({ error: "File type not permitted" });
@@ -196,13 +192,13 @@ app.get("/api/fs/read", verifyJWT, rateLimit, (req, res) => {
 app.get("/api/admin/retrieve", verifyJWT, (req, res) => {
   const { role, clearance } = req.user || {};
   
-  // CRITICAL: Reject HS256 tokens even if they have correct claims
+  // Must be RS256 verified
   if (req.authMethod !== "RS256") {
     return res.status(403).json({
       error: "Algorithm mismatch",
-      message: "Admin endpoint requires RS256-signed tokens. HS256 tokens are not accepted for security reasons.",
-      hint: "The verification algorithm must match the signing method. Try using the public key as an HMAC secret.",
-      your_method: req.authMethod
+      message: "Admin endpoint requires RS256-signed tokens",
+      your_method: req.authMethod,
+      required_method: "RS256"
     });
   }
   
@@ -217,7 +213,6 @@ app.get("/api/admin/retrieve", verifyJWT, (req, res) => {
   return res.json({
     flag_part3: FLAG_P3,
     message: "Chain complete. You've earned it.",
-    note: "This token was verified using RS256 - algorithm confusion successful!"
   });
 });
 
@@ -233,9 +228,10 @@ app.get("/api/sys/info", verifyJWT, (req, res) => {
       uptime: process.uptime().toFixed(2),
       pid: process.pid,
       cmdline,
-      public_key_hint: "Public key location: /tmp/.cache/",
-      key_hash_prefix: pkHash,
-      algorithm_confusion: "RS256 public key can be used as HS256 secret"
+      key_locations: {
+        public_key_hint: `/tmp/.cache/${pubHash}.pub`,
+        private_key_hint: `/tmp/.cache/${privHash}.key`
+      }
     });
   } catch (_) {
     res.json({ node: process.version, uptime: process.uptime().toFixed(2) });
@@ -247,7 +243,6 @@ app.use((req, res) => res.status(404).json({ error: "Not found" }));
 
 app.listen(PORT, () => {
   console.log(`[ultimate-revenge] listening on :${PORT}`);
-  console.log(`[debug] JWT_SECRET derived from SHA256("${APP_NAME}:${PORT}")`);
-  console.log(`[debug] Public key stored at ${PK_PATH}`);
-  console.log(`[security] Admin endpoint only accepts RS256-signed tokens`);
+  console.log(`[debug] Public key: ${PUB_KEY_PATH}`);
+  console.log(`[debug] Private key: ${PRIV_KEY_PATH}`);
 });
