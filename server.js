@@ -38,8 +38,8 @@ fs.writeFileSync(PRIV_KEY_PATH, privateKey);
 // ─────────────────────────────────────────────
 //  Flag assembly
 // ─────────────────────────────────────────────
-const FLAG_P1 = "SECURINETS{";
-const FLAG_P2 = "th3_ch41n_";
+const FLAG_P1 = "SECURINETS{th3";
+const FLAG_P2 = "_ch41n_";
 const FLAG_P3 = "1s_unbre4k4bl3}";
 
 fs.mkdirSync("/var/cache/app", { recursive: true });
