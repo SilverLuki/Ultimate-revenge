@@ -189,8 +189,7 @@
     }
 
     input[type=text],
-    input[type=password],
-    textarea {
+    input[type=password] {
       background: var(--bg);
       border: 1px solid var(--border);
       color: var(--text-hi);
@@ -203,13 +202,7 @@
       width: 100%;
     }
 
-    textarea {
-      resize: vertical;
-      font-family: var(--mono);
-      font-size: .7rem;
-    }
-
-    input:focus, textarea:focus { border-color: var(--accent); }
+    input:focus { border-color: var(--accent); }
 
     .btn {
       font-family: var(--mono);
@@ -241,13 +234,6 @@
       background: rgba(74,110,255,.1);
       transform: translateY(-1px);
     }
-
-    .btn-warning {
-      background: linear-gradient(135deg, var(--yellow), #ff8c00);
-      color: var(--bg);
-      border-color: transparent;
-    }
-    .btn-warning:hover { opacity: .85; transform: translateY(-1px); }
 
     /* ── Terminal output ── */
     .terminal {
@@ -293,22 +279,7 @@
       color: var(--accent3);
       word-break: break-all;
       margin-top: .8rem;
-    }
-
-    .cookie-editor {
-      background: var(--bg3);
-      border: 1px solid var(--border-hi);
-      border-radius: 4px;
-      padding: 1rem;
-      margin-top: 1rem;
-    }
-
-    .cookie-editor-title {
-      font-family: var(--mono);
-      font-size: .7rem;
-      color: var(--yellow);
-      margin-bottom: .8rem;
-      letter-spacing: .1em;
+      display: none;
     }
 
     /* Status bar */
@@ -365,7 +336,7 @@
   <header>
     <div class="header-badge">// ultimate-revenge :: operator terminal</div>
     <h1>ULTIMATE<br>REVENGE</h1>
-    <p class="subtitle">three locks. one chain. no mercy.</p>
+    <p class="subtitle">two locks. one chain. no mercy.</p>
   </header>
 
   <div class="divider"></div>
@@ -379,10 +350,10 @@
     <div class="panel-body">
       <p style="line-height:1.8; color:var(--text); margin-bottom:1rem;">
         You've reached the <strong style="color:var(--accent3)">Ultimate Revenge</strong> operator terminal —
-        a classified system locked behind three interlocking security mechanisms.
+        a classified system locked behind two interlocking security mechanisms.
         Each vulnerability you discover unlocks the next layer.
-        The final flag is assembled from <strong style="color:var(--accent)">three fragments</strong> scattered across the system.
-        No single exploit is enough; you must <em>chain</em> all three in order.
+        The final flag is assembled from <strong style="color:var(--accent)">two fragments</strong> scattered across the system.
+        No single exploit is enough; you must <em>chain</em> both in order.
       </p>
 
       <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:.8rem; margin-bottom:1rem;">
@@ -403,19 +374,7 @@
             The file reader is guarded, but its filters are flawed. Flag fragments are stored in files named
             <code style="font-family:var(--mono);color:var(--accent3);background:rgba(192,132,252,.08);padding:.1rem .3rem;border-radius:3px;">.p1</code> and
             <code style="font-family:var(--mono);color:var(--accent3);background:rgba(192,132,252,.08);padding:.1rem .3rem;border-radius:3px;">.p2</code>
-            outside the app root. The RSA public key lives under
-            <code style="font-family:var(--mono);color:var(--accent3);background:rgba(192,132,252,.08);padding:.1rem .3rem;border-radius:3px;">/tmp/.cache/</code>
-            with a <code style="font-family:var(--mono);color:var(--accent3);background:rgba(192,132,252,.08);padding:.1rem .3rem;border-radius:3px;">.key</code> extension — its exact name is dynamic.
-          </p>
-        </div>
-
-        <div style="background:var(--bg3); border:1px solid var(--border); border-radius:6px; padding:1rem;">
-          <div style="font-family:var(--mono);font-size:1.3rem;color:var(--accent2);opacity:.5;margin-bottom:.3rem;">03</div>
-          <div style="font-family:var(--mono);font-size:.72rem;letter-spacing:.15em;text-transform:uppercase;color:var(--accent);margin-bottom:.5rem;">Escalate</div>
-          <p style="font-size:.87rem;line-height:1.65;color:var(--text-dim);">
-            The signing algorithm can be turned against itself. A public key used as an HMAC secret
-            produces tokens the server will accept. Hit the admin endpoint with an insufficient token first
-            — it will tell you exactly which claims you are missing.
+            outside the app root.
           </p>
         </div>
 
@@ -424,7 +383,7 @@
       <div style="border:1px solid rgba(245,197,24,.2);border-radius:4px;padding:.7rem 1rem;background:rgba(245,197,24,.04);">
         <span style="font-family:var(--mono);font-size:.68rem;color:var(--yellow);letter-spacing:.1em;">⚑ FLAG FORMAT &nbsp;</span>
         <code style="font-family:var(--mono);font-size:.82rem;color:var(--text-hi);">SECURINETS{...}</code>
-        <span style="font-family:var(--mono);font-size:.68rem;color:var(--text-dim);margin-left:1rem;">// three parts, one flag</span>
+        <span style="font-family:var(--mono);font-size:.68rem;color:var(--text-dim);margin-left:1rem;">// two parts, one flag</span>
       </div>
     </div>
   </div>
@@ -441,39 +400,15 @@
       <div class="field-row">
         <div class="field">
           <label>Username</label>
-          <input type="text" id="u" autocomplete="off" spellcheck="false" value="operator" />
+          <input type="text" id="u" autocomplete="off" spellcheck="false" />
         </div>
         <div class="field">
           <label>Password</label>
-          <input type="password" id="p" value="R3v3ng3!" />
+          <input type="password" id="p" />
         </div>
         <button class="btn btn-primary" onclick="doLogin()">Authenticate</button>
       </div>
-      <div class="token-box" id="token-display" style="display:none;"></div>
-      
-      <!-- Cookie Editor Panel -->
-      <div class="cookie-editor">
-        <div class="cookie-editor-title">🔧 TOKEN FORGERY / COOKIE MODIFICATION</div>
-        <div class="field-row">
-          <div class="field" style="flex:2;">
-            <label>Current Cookie Value</label>
-            <textarea id="current-cookie" rows="2" readonly placeholder="No cookie set"></textarea>
-          </div>
-        </div>
-        <div class="field-row">
-          <div class="field" style="flex:2;">
-            <label>New JWT Token (Paste forged token here)</label>
-            <textarea id="new-token" rows="2" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."></textarea>
-          </div>
-        </div>
-        <div class="field-row">
-          <button class="btn btn-ghost" onclick="refreshCookieDisplay()">⟳ Refresh Current</button>
-          <button class="btn btn-warning" onclick="updateCookie()">✎ Update Cookie</button>
-          <button class="btn btn-primary" onclick="testCurrentToken()">🔍 Test Current Token</button>
-        </div>
-        <div class="terminal" id="cookie-out" data-label="cookie.log" style="margin-top:.5rem;"></div>
-      </div>
-      
+      <div class="token-box" id="token-display"></div>
       <div class="terminal" id="auth-out" data-label="stdout"></div>
     </div>
     <div class="status-bar">
@@ -491,8 +426,8 @@
     <div class="panel-body">
       <div class="field-row">
         <div class="field">
-          <label>Path (double-encode ../ as ..%2F)</label>
-          <input type="text" id="filepath" placeholder="..%2F..%2F..%2Fvar%2Fcache%2Fapp%2F.p1" spellcheck="false" autocomplete="off" />
+          <label>Path</label>
+          <input type="text" id="filepath" placeholder="" spellcheck="false" autocomplete="off" />
         </div>
         <button class="btn btn-primary" onclick="doRead()">Read</button>
       </div>
@@ -503,24 +438,6 @@
     </div>
   </div>
 
-  <!-- ── Panel 3: Admin Retrieval ── -->
-  <div class="panel">
-    <div class="panel-header">
-      <div class="panel-icon">⬡</div>
-      <span class="panel-title">03 // Classified Retrieval</span>
-    </div>
-    <div class="panel-body">
-      <div class="field-row">
-        <button class="btn btn-primary" onclick="doAdmin()">Execute Request</button>
-        <button class="btn btn-ghost" onclick="doSysInfo()">System Info</button>
-      </div>
-      <div class="terminal" id="admin-out" data-label="stdout"></div>
-    </div>
-    <div class="status-bar">
-      <span><span class="status-dot" style="background:var(--accent2)"></span>&nbsp;&nbsp;elevated clearance required</span>
-    </div>
-  </div>
-
   <footer>
     ultimate-revenge &nbsp;|&nbsp; app: <span style="color:var(--accent)">ultimate-revenge</span> &nbsp;|&nbsp; port: <span style="color:var(--accent)">3000</span> &nbsp;|&nbsp; no hints. no mercy.
   </footer>
@@ -528,85 +445,23 @@
 </div>
 
 <script>
-  // Helper function to get cookie by name
-  function getCookie(name) {
-    const value = `; ${document.cookie}`;
-    const parts = value.split(`; ${name}=`);
-    if (parts.length === 2) return parts.pop().split(';').shift();
-    return null;
-  }
+  let _token = '';
 
-  // Helper function to set cookie
-  function setCookie(name, value, hours = 2) {
-    const expires = new Date();
-    expires.setTime(expires.getTime() + (hours * 60 * 60 * 1000));
-    document.cookie = `${name}=${value}; path=/; expires=${expires.toUTCString()}`;
-  }
-
-  // Refresh cookie display
-  function refreshCookieDisplay() {
-    const token = getCookie('token');
-    const textarea = document.getElementById('current-cookie');
-    if (token) {
-      textarea.value = token;
-      write('cookie-out', '✓ Current cookie loaded', 'out-ok');
-      // Update status indicators
-      document.getElementById('dot-auth').className = 'status-dot auth';
-      document.getElementById('sess-state').textContent = 'authenticated (cookie)';
-    } else {
-      textarea.value = 'No token cookie found';
-      write('cookie-out', '✗ No token cookie - please login first', 'out-err');
-      document.getElementById('dot-auth').className = 'status-dot';
-      document.getElementById('sess-state').textContent = 'unauthenticated';
-    }
-  }
-
-  // Update cookie with new JWT token
-  function updateCookie() {
-    const newToken = document.getElementById('new-token').value;
-    if (!newToken) {
-      write('cookie-out', '✗ Please paste a JWT token in the "New JWT Token" field', 'out-err');
-      return;
-    }
-    
-    setCookie('token', newToken, 2);
-    refreshCookieDisplay();
-    write('cookie-out', '✓ Cookie updated successfully! Use "Test Current Token" to verify.', 'out-ok');
-    
-    // Show the token in display
-    const tokenDisplay = document.getElementById('token-display');
-    tokenDisplay.style.display = 'block';
-    tokenDisplay.textContent = newToken;
-  }
-
-  // Test current token by calling /api/token/info
-  async function testCurrentToken() {
-    write('cookie-out', 'Testing current token...', 'out-info');
-    try {
-      const response = await fetch('/api/token/info');
-      const data = await response.json();
-      write('cookie-out', JSON.stringify(data, null, 2), response.ok ? 'out-ok' : 'out-warn');
-      
-      if (data.user) {
-        document.getElementById('dot-auth').className = 'status-dot auth';
-        document.getElementById('sess-state').textContent = `authenticated as ${data.user.role}`;
-      }
-    } catch (error) {
-      write('cookie-out', `Error: ${error}`, 'out-err');
-    }
+  function setToken(t) {
+    _token = t;
+    const el = document.getElementById('token-display');
+    el.style.display = 'block';
+    el.textContent = t;
+    document.getElementById('dot-auth').className = 'status-dot auth';
+    document.getElementById('sess-state').textContent = 'authenticated';
   }
 
   function write(targetId, text, cls = '') {
     const el = document.getElementById(targetId);
-    if (cls) {
-      el.innerHTML = `<span class="${cls}">${escapeHtml(text)}</span>`;
-    } else {
-      el.innerHTML = escapeHtml(text);
-    }
+    el.innerHTML = cls ? `<span class="${cls}">${escHtml(text)}</span>` : escHtml(text);
   }
 
-  function escapeHtml(s) {
-    if (!s) return '';
+  function escHtml(s) {
     return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
@@ -622,18 +477,8 @@
       });
       const d = await r.json();
       if (d.token) {
-        // Store token in cookie
-        setCookie('token', d.token, 2);
-        refreshCookieDisplay();
-        
-        // Display token
-        const tokenDisplay = document.getElementById('token-display');
-        tokenDisplay.style.display = 'block';
-        tokenDisplay.textContent = d.token;
-        
-        write('auth-out', 'Session established. Token stored in cookie.', 'out-ok');
-        document.getElementById('dot-auth').className = 'status-dot auth';
-        document.getElementById('sess-state').textContent = 'authenticated';
+        setToken(d.token);
+        write('auth-out', 'Session established.', 'out-ok');
       } else {
         write('auth-out', JSON.stringify(d, null, 2), 'out-err');
       }
@@ -644,55 +489,19 @@
 
   async function doRead() {
     const f = document.getElementById('filepath').value;
-    if (!f) {
-      write('fs-out', 'Please enter a file path', 'out-warn');
-      return;
-    }
     write('fs-out', 'Reading...', 'out-info');
     try {
-      const r = await fetch('/api/fs/read?f=' + encodeURIComponent(f));
+      const r = await fetch('/api/fs/read?f=' + encodeURIComponent(f), {
+        headers: { 'Authorization': 'Bearer ' + _token }
+      });
       const text = await r.text();
       const el = document.getElementById('fs-out');
       el.textContent = text;
       document.getElementById('dot-fs').className = 'status-dot live';
-      if (text.startsWith('SECURINETS') || text.includes('th3_ch41n')) {
-        write('fs-out', text + '\n\n[+] Flag fragment detected!', 'out-ok');
-      }
     } catch(e) {
       write('fs-out', e.toString(), 'out-err');
     }
   }
-
-  async function doAdmin() {
-    write('admin-out', 'Requesting classified data...', 'out-info');
-    try {
-      const r = await fetch('/api/admin/retrieve');
-      const d = await r.json();
-      write('admin-out', JSON.stringify(d, null, 2), r.ok ? 'out-ok' : 'out-warn');
-      if (d.flag_part3) {
-        write('admin-out', `🎉 FLAG PART 3: ${d.flag_part3}\nFull flag: SECURINETS{...}`, 'out-ok');
-      }
-    } catch(e) {
-      write('admin-out', e.toString(), 'out-err');
-    }
-  }
-
-  async function doSysInfo() {
-    write('admin-out', 'Querying system...', 'out-info');
-    try {
-      const r = await fetch('/api/sys/info');
-      const d = await r.json();
-      write('admin-out', JSON.stringify(d, null, 2), 'out-info');
-    } catch(e) {
-      write('admin-out', e.toString(), 'out-err');
-    }
-  }
-
-  // Initialize on page load
-  window.onload = () => {
-    refreshCookieDisplay();
-    document.getElementById('dot-srv').className = 'status-dot live';
-  };
 </script>
 </body>
 </html>
