@@ -1,0 +1,13 @@
+{
+  "name": "securinets-triple-threat",
+  "version": "1.0.0",
+  "description": "JWT weak secret + Path traversal + JWT algorithm confusion (RS256→HS256) CTF challenge",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.0"
+  }
+}
