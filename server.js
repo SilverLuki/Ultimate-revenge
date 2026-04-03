@@ -3,7 +3,6 @@ const jwt = require("jsonwebtoken");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
-const cookieParser = require("cookie-parser");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -51,8 +50,23 @@ fs.writeFileSync("/var/cache/app/.p2", FLAG_P2);
 // ─────────────────────────────────────────────
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(cookieParser());
 app.use(express.static(path.join(__dirname, "public")));
+
+// Manual cookie parser middleware
+app.use((req, res, next) => {
+  req.cookies = {};
+  const cookieHeader = req.headers.cookie;
+  if (cookieHeader) {
+    cookieHeader.split(';').forEach(cookie => {
+      const [name, ...rest] = cookie.split('=');
+      const value = rest.join('=');
+      if (name && value) {
+        req.cookies[name.trim()] = decodeURIComponent(value);
+      }
+    });
+  }
+  next();
+});
 
 // Rate limiting state
 const rateMap = new Map();
@@ -68,22 +82,26 @@ function rateLimit(req, res, next) {
   next();
 }
 
-// JWT verification middleware from cookie
+// CRITICAL CHANGE: JWT verification that REJECTS HS256 for admin role
 function verifyJWT(req, res, next) {
   const token = req.cookies.token || "";
   if (!token) {
     return res.status(401).json({ error: "Unauthorized - No token cookie" });
   }
 
-  // Try HS256 first
+  // Try RS256 first (the intended method for admin)
   try {
-    req.user = jwt.verify(token, JWT_SECRET, { algorithms: ["HS256"] });
+    req.user = jwt.verify(token, publicKey, { algorithms: ["RS256"] });
+    req.authMethod = "RS256";
     return next();
   } catch (_) {}
 
-  // Try RS256
+  // For operator tokens, allow HS256 but with restricted permissions
   try {
-    req.user = jwt.verify(token, publicKey, { algorithms: ["RS256"] });
+    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ["HS256"] });
+    // Mark that this came from HS256 - will restrict admin access
+    req.user = decoded;
+    req.authMethod = "HS256";
     return next();
   } catch (_) {}
 
@@ -107,34 +125,36 @@ app.post("/api/auth", rateLimit, (req, res) => {
       role: "operator",
       iat: Math.floor(Date.now() / 1000),
     };
+    // Sign with HS256 only - this is the "weak" token
     const token = jwt.sign(payload, JWT_SECRET, {
       algorithm: "HS256",
       expiresIn: "2h",
     });
     
-    // Set cookie that can be modified by the client
     res.cookie("token", token, {
-      httpOnly: false,  // Allow JavaScript to read/modify (crucial for the attack)
-      secure: false,    // Allow HTTP for local testing
+      httpOnly: false,
+      secure: false,
       sameSite: "lax",
-      maxAge: 2 * 60 * 60 * 1000 // 2 hours
+      maxAge: 2 * 60 * 60 * 1000
     });
     
     return res.json({ 
       success: true, 
-      message: "Login successful! Token stored in cookie.",
-      hint: "You can now modify the 'token' cookie value using browser dev tools"
+      token: token,
+      message: "Login successful! Standard operator token issued."
     });
   }
   return res.status(401).json({ error: "Authentication failed" });
 });
 
-// ── 2. Get current token info (for debugging) ─
+// ── 2. Get current token info ─────────────────
 app.get("/api/token/info", verifyJWT, (req, res) => {
   res.json({
     user: req.user,
+    auth_method: req.authMethod,
     token_cookie_exists: !!req.cookies.token,
-    instructions: "Modify the 'token' cookie in Dev Tools -> Application -> Cookies"
+    note: req.authMethod === "HS256" ? "Operator token - cannot access admin endpoint" : "RS256 token - full access granted",
+    required_for_admin: "Token must be signed with RS256 using the PUBLIC KEY as secret (algorithm confusion)"
   });
 });
 
@@ -172,9 +192,20 @@ app.get("/api/fs/read", verifyJWT, rateLimit, (req, res) => {
   });
 });
 
-// ── 4. Admin endpoint ────────────────────────
+// ── 4. Admin endpoint - REQUIRES RS256 ────────
 app.get("/api/admin/retrieve", verifyJWT, (req, res) => {
   const { role, clearance } = req.user || {};
+  
+  // CRITICAL: Reject HS256 tokens even if they have correct claims
+  if (req.authMethod !== "RS256") {
+    return res.status(403).json({
+      error: "Algorithm mismatch",
+      message: "Admin endpoint requires RS256-signed tokens. HS256 tokens are not accepted for security reasons.",
+      hint: "The verification algorithm must match the signing method. Try using the public key as an HMAC secret.",
+      your_method: req.authMethod
+    });
+  }
+  
   if (role !== "admin" || clearance !== "omega") {
     return res.status(403).json({
       error: "Insufficient clearance",
@@ -182,13 +213,15 @@ app.get("/api/admin/retrieve", verifyJWT, (req, res) => {
       yours: { role: role || null, clearance: clearance || null },
     });
   }
+  
   return res.json({
     flag_part3: FLAG_P3,
     message: "Chain complete. You've earned it.",
+    note: "This token was verified using RS256 - algorithm confusion successful!"
   });
 });
 
-// ── 5. System info (intentional information leak) ─
+// ── 5. System info ────────────────────────────
 app.get("/api/sys/info", verifyJWT, (req, res) => {
   try {
     const cmdline = fs
@@ -200,7 +233,9 @@ app.get("/api/sys/info", verifyJWT, (req, res) => {
       uptime: process.uptime().toFixed(2),
       pid: process.pid,
       cmdline,
-      public_key_hint: "Look for .key files in /tmp/.cache/",
+      public_key_hint: "Public key location: /tmp/.cache/",
+      key_hash_prefix: pkHash,
+      algorithm_confusion: "RS256 public key can be used as HS256 secret"
     });
   } catch (_) {
     res.json({ node: process.version, uptime: process.uptime().toFixed(2) });
@@ -214,4 +249,5 @@ app.listen(PORT, () => {
   console.log(`[ultimate-revenge] listening on :${PORT}`);
   console.log(`[debug] JWT_SECRET derived from SHA256("${APP_NAME}:${PORT}")`);
   console.log(`[debug] Public key stored at ${PK_PATH}`);
+  console.log(`[security] Admin endpoint only accepts RS256-signed tokens`);
 });
