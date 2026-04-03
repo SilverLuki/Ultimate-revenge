@@ -12,10 +12,10 @@ const PORT = process.env.PORT || 3000;
 //  Key material setup
 // ─────────────────────────────────────────────
 
-const APP_NAME = "ultimate-revenge";
+const APP_NAME = "securinets";
 const JWT_SECRET = crypto
   .createHash("sha256")
-  .update(`${APP_NAME}:${PORT}`)
+  .update(`${APP_NAME}`)
   .digest("hex");
 
 // RSA key pair for algorithm-confusion attack (part 3)
