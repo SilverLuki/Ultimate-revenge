@@ -1,0 +1,19 @@
+version: "3.9"
+
+services:
+  ultimate-revenge:
+    build: .
+    container_name: ultimate-revenge
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+    restart: unless-stopped
+    read_only: false          # needs to write /tmp and /var/cache/app at boot
+    tmpfs:
+      - /tmp                  # ephemeral — key material regenerates each restart
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
