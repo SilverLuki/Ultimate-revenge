@@ -7,55 +7,44 @@ const crypto = require("crypto");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// ─────────────────────────────────────────────
+//  Key material setup
+// ─────────────────────────────────────────────
+
+// JWT secret is NOT a plain string.
+// It is derived as: SHA-256( appName + ":" + PORT )
+// appName is embedded in the HTML title and footer — players must notice it.
 const APP_NAME = "securinets";
 const JWT_SECRET = crypto
   .createHash("sha256")
   .update(`${APP_NAME}`)
   .digest("hex");
 
-// Generate RSA key pair
-const { privateKey, publicKey } = crypto.generateKeyPairSync("rsa", {
-  modulusLength: 2048,
-  publicKeyEncoding: { type: "spki", format: "pem" },
-  privateKeyEncoding: { type: "pkcs8", format: "pem" },
-});
-
-// Store public key
-const pkHash = crypto.createHash("sha1").update(publicKey).digest("hex").slice(0, 8);
-const PK_PATH = `/tmp/.cache/${pkHash}.key`;
-fs.mkdirSync("/tmp/.cache", { recursive: true });
-fs.writeFileSync(PK_PATH, publicKey);
-
-// Flags
+// ─────────────────────────────────────────────
+//  Flag assembly (two parts only)
+// ─────────────────────────────────────────────
 const FLAG_P1 = "SECURINETS{";
-const FLAG_P2 = "th3_ch41n_";
-const FLAG_P3 = "1s_unbre4k4bl3}";
+const FLAG_P2 = "th3_ch41n_1s_unbre4k4bl3}";
 
+// Part 1: publicly readable after authentication
+// The file is at /var/cache/app/.p1
 fs.mkdirSync("/var/cache/app", { recursive: true });
 fs.writeFileSync("/var/cache/app/.p1", FLAG_P1);
+
+// Part 2: admin-only file
+// Same location but requires admin role to read
 fs.writeFileSync("/var/cache/app/.p2", FLAG_P2);
 
+// ─────────────────────────────────────────────
+//  Middleware
+// ─────────────────────────────────────────────
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Serve static files from /app/public (docker working dir)
 app.use(express.static(path.join(__dirname, "public")));
 
-// Cookie parser
-app.use((req, res, next) => {
-  req.cookies = {};
-  const cookieHeader = req.headers.cookie;
-  if (cookieHeader) {
-    cookieHeader.split(';').forEach(cookie => {
-      const [name, ...rest] = cookie.split('=');
-      const value = rest.join('=');
-      if (name && value) {
-        req.cookies[name.trim()] = decodeURIComponent(value);
-      }
-    });
-  }
-  next();
-});
-
-// Rate limiting
+// Rate limiting state (in-memory, resets every 60s)
 const rateMap = new Map();
 setInterval(() => rateMap.clear(), 60000);
 
@@ -69,111 +58,208 @@ function rateLimit(req, res, next) {
   next();
 }
 
-// SIMPLE VERIFICATION - Accepts tokens signed with:
-// 1. JWT_SECRET (HS256) - for operator
-// 2. Public key as HMAC secret (HS256) - for admin (THIS IS THE VULNERABILITY)
+// JWT verification middleware — supports HS256 only
 function verifyJWT(req, res, next) {
-  const token = req.cookies.token || "";
-  if (!token) {
+  const auth = req.headers["authorization"] || "";
+  if (!auth.startsWith("Bearer ")) {
     return res.status(401).json({ error: "Unauthorized" });
   }
+  const token = auth.slice(7);
 
-  // Try regular operator token (HS256 with JWT_SECRET)
   try {
     req.user = jwt.verify(token, JWT_SECRET, { algorithms: ["HS256"] });
-    req.authMethod = "HS256_JWT_SECRET";
     return next();
-  } catch (_) {}
-
-  // VULNERABILITY: Accept tokens signed with the PUBLIC KEY as HMAC secret
-  // This is the intended attack vector for P3
-  try {
-    req.user = jwt.verify(token, publicKey, { algorithms: ["HS256"] });
-    req.authMethod = "HS256_PUBLIC_KEY";
-    console.log("[+] Token accepted using public key as HMAC secret!");
-    return next();
-  } catch (_) {}
-
-  return res.status(403).json({ error: "Forbidden" });
+  } catch (_) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
 }
 
-// Routes
+// Admin verification middleware
+function verifyAdmin(req, res, next) {
+  const auth = req.headers["authorization"] || "";
+  if (!auth.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  const token = auth.slice(7);
+
+  try {
+    const user = jwt.verify(token, JWT_SECRET, { algorithms: ["HS256"] });
+    if (user.role !== "admin") {
+      return res.status(403).json({ 
+        error: "Admin access required",
+        hint: "Your token role is '" + (user.role || "none") + "'. Admin credentials are different from operator credentials."
+      });
+    }
+    req.user = user;
+    return next();
+  } catch (_) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+}
+
+// ─────────────────────────────────────────────
+//  Routes
+// ─────────────────────────────────────────────
+
+// Root — serves the main SPA page
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-// Login
+// ── 1. Login (operator) ──────────────────────
+// Credentials: operator / R3v3ng3!
+// Returns JWT with role: "operator"
 app.post("/api/auth", rateLimit, (req, res) => {
   const { username, password } = req.body || {};
   if (username === "operator" && password === "R3v3ng3!") {
-    const payload = { sub: username, role: "operator" };
-    const token = jwt.sign(payload, JWT_SECRET, { algorithm: "HS256", expiresIn: "2h" });
-    res.cookie("token", token, { httpOnly: false, maxAge: 2 * 60 * 60 * 1000 });
-    return res.json({ success: true, token });
+    const payload = {
+      sub: username,
+      role: "operator",
+      iat: Math.floor(Date.now() / 1000),
+    };
+    const token = jwt.sign(payload, JWT_SECRET, {
+      algorithm: "HS256",
+      expiresIn: "2h",
+    });
+    return res.json({ token });
   }
   return res.status(401).json({ error: "Authentication failed" });
 });
 
-// Token info
-app.get("/api/token/info", verifyJWT, (req, res) => {
-  res.json({ user: req.user, auth_method: req.authMethod });
+// ── 1b. Admin login ──────────────────────────
+// Credentials: admin / 4dm1n_S3cr3t!
+// Returns JWT with role: "admin"
+app.post("/api/admin/auth", rateLimit, (req, res) => {
+  const { username, password } = req.body || {};
+  if (username === "admin" && password === "4dm1n_S3cr3t!") {
+    const payload = {
+      sub: username,
+      role: "admin",
+      iat: Math.floor(Date.now() / 1000),
+    };
+    const token = jwt.sign(payload, JWT_SECRET, {
+      algorithm: "HS256",
+      expiresIn: "2h",
+    });
+    return res.json({ token, message: "Admin session established. You can now access restricted files." });
+  }
+  return res.status(401).json({ error: "Admin authentication failed" });
 });
 
-// File read with path traversal
+// ── 2. File read (public files - part 1 only) ─
+// Regular authenticated users can read .p1 but NOT .p2
 app.get("/api/fs/read", verifyJWT, rateLimit, (req, res) => {
   let file = req.query.f || "";
-  
-  if (file.includes("../")) return res.status(400).json({ error: "Invalid path" });
-  if (file.startsWith("/")) return res.status(400).json({ error: "Invalid path" });
-  
+
+  // Filter 1: block literal "../"
+  if (file.includes("../")) {
+    return res.status(400).json({ error: "Invalid path" });
+  }
+
+  // Filter 2: block leading slash (absolute path)
+  if (file.startsWith("/")) {
+    return res.status(400).json({ error: "Invalid path" });
+  }
+
+  // Filter 3: decode once and re-check — but players can double-encode
   let decoded;
-  try { decoded = decodeURIComponent(file); } catch (_) { return res.status(400).json({ error: "Invalid encoding" }); }
-  
+  try {
+    decoded = decodeURIComponent(file);
+  } catch (_) {
+    return res.status(400).json({ error: "Invalid encoding" });
+  }
+
+  // Extension allowlist — but hidden files (starting with .) are not blocked
   const allowed = [".txt", ".log", ".conf", ".key", ".pem", ".env"];
   const ext = path.extname(decoded);
-  if (ext && !allowed.includes(ext)) return res.status(403).json({ error: "File type not permitted" });
-  
-  const target = path.resolve(__dirname, decoded);
+  if (ext && !allowed.includes(ext)) {
+    return res.status(403).json({ error: "File type not permitted" });
+  }
+
+  // Block access to .p2 for non-admin users
+  if (decoded.includes(".p2") || decoded.endsWith(".p2")) {
+    return res.status(403).json({ 
+      error: "Access denied. This file requires elevated privileges.",
+      hint: "Try using admin credentials to access the second flag fragment."
+    });
+  }
+
+  // Build final path from the app's working directory
+  const base = __dirname;
+  const target = path.resolve(base, decoded);
+
   fs.readFile(target, "utf8", (err, data) => {
     if (err) return res.status(404).json({ error: "Not found" });
     res.send(data);
   });
 });
 
-// Admin endpoint - requires token signed with PUBLIC KEY
-app.get("/api/admin/retrieve", verifyJWT, (req, res) => {
-  const { role, clearance } = req.user || {};
-  
-  // Must be signed with the public key (not the regular JWT_SECRET)
-  if (req.authMethod !== "HS256_PUBLIC_KEY") {
-    return res.status(403).json({
-      error: "Insufficient privileges",
-      message: "This endpoint requires a token signed with the RSA public key",
-      hint: "Read the public key via path traversal and use it as an HMAC secret with HS256"
-    });
-  }
-  
-  if (role !== "admin" || clearance !== "omega") {
-    return res.status(403).json({
-      error: "Insufficient clearance",
-      required: { role: "admin", clearance: "omega" }
-    });
-  }
-  
-  return res.json({ flag_part3: FLAG_P3, message: "Chain complete!" });
-});
+// ── 2b. Admin file read (restricted files - part 2) ─
+// Only admin users can read .p2 and other sensitive files
+app.get("/api/admin/fs/read", verifyAdmin, rateLimit, (req, res) => {
+  let file = req.query.f || "";
 
-// System info
-app.get("/api/sys/info", verifyJWT, (req, res) => {
-  res.json({
-    pid: process.pid,
-    public_key_path: PK_PATH,
-    public_key_hash: pkHash,
-    hint: "Use path traversal to read the public key, then use it with HS256 to forge an admin token"
+  // Filter 1: block literal "../"
+  if (file.includes("../")) {
+    return res.status(400).json({ error: "Invalid path" });
+  }
+
+  // Filter 2: block leading slash (absolute path)
+  if (file.startsWith("/")) {
+    return res.status(400).json({ error: "Invalid path" });
+  }
+
+  let decoded;
+  try {
+    decoded = decodeURIComponent(file);
+  } catch (_) {
+    return res.status(400).json({ error: "Invalid encoding" });
+  }
+
+  // Build final path from the app's working directory
+  const base = __dirname;
+  const target = path.resolve(base, decoded);
+
+  fs.readFile(target, "utf8", (err, data) => {
+    if (err) return res.status(404).json({ error: "Not found" });
+    // Log admin access for audit trail
+    console.log(`[AUDIT] Admin ${req.user.sub} read file: ${decoded}`);
+    res.send(data);
   });
 });
 
+// ── 3. System info (intentional information leak) ─
+// Leaks /proc/self/cmdline — players can find the process environment
+app.get("/api/sys/info", verifyJWT, (req, res) => {
+  try {
+    const cmdline = fs
+      .readFileSync("/proc/self/cmdline", "utf8")
+      .replace(/\0/g, " ")
+      .trim();
+    res.json({
+      node: process.version,
+      uptime: process.uptime().toFixed(2),
+      pid: process.pid,
+      cmdline,
+      role: req.user.role,
+      hint: "Admin users have access to /api/admin/fs/read endpoint for restricted files."
+    });
+  } catch (_) {
+    res.json({ node: process.version, uptime: process.uptime().toFixed(2), role: req.user.role });
+  }
+});
+
+// ── Health ────────────────────────────────────
+app.get("/health", (req, res) => res.send("OK"));
+
+// ── 404 fallback ──────────────────────────────
+app.use((req, res) => res.status(404).json({ error: "Not found" }));
+
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Public key: ${PK_PATH}`);
+  console.log(`[ultimate-revenge] listening on :${PORT}`);
+  console.log(`[debug] JWT_SECRET derived from SHA256("${APP_NAME}:${PORT}")`);
+  console.log(`[debug] Operator credentials: operator / R3v3ng3!`);
+  console.log(`[debug] Admin credentials: admin / 4dm1n_S3cr3t!`);
+  console.log(`[debug] Part 1 (.p1) - accessible by operator`);
+  console.log(`[debug] Part 2 (.p2) - accessible ONLY by admin`);
 });
