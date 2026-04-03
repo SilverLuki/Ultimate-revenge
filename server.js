@@ -14,10 +14,10 @@ const PORT = process.env.PORT || 3000;
 // JWT secret is NOT a plain string.
 // It is derived as: SHA-256( appName + ":" + PORT )
 // appName is embedded in the HTML title and footer — players must notice it.
-const APP_NAME = "ultimate-revenge";
+const APP_NAME = "securinets";
 const JWT_SECRET = crypto
   .createHash("sha256")
-  .update(`${APP_NAME}:${PORT}`)
+  .update(APP_NAME)   // no PORT, just the string "securinets"
   .digest("hex");
 
 // RSA key pair for algorithm-confusion attack (part 3)
