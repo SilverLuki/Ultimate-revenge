@@ -336,7 +336,7 @@
   <header>
     <div class="header-badge">// ultimate-revenge :: operator terminal</div>
     <h1>ULTIMATE<br>REVENGE</h1>
-    <p class="subtitle">two locks. one chain. no mercy.</p>
+    <p class="subtitle">three locks. one chain. no mercy.</p>
   </header>
 
   <div class="divider"></div>
@@ -350,10 +350,9 @@
     <div class="panel-body">
       <p style="line-height:1.8; color:var(--text); margin-bottom:1rem;">
         You've reached the <strong style="color:var(--accent3)">Ultimate Revenge</strong> operator terminal —
-        a classified system locked behind two interlocking security mechanisms.
-        Each vulnerability you discover unlocks the next layer.
-        The final flag is assembled from <strong style="color:var(--accent)">two fragments</strong> scattered across the system.
-        No single exploit is enough; you must <em>chain</em> both in order.
+        a classified system locked behind interlocking security mechanisms.
+        Each layer you breach exposes the next. The flag is split across two fragments.
+        Chain your exploits. No shortcuts.
       </p>
 
       <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:.8rem; margin-bottom:1rem;">
@@ -362,19 +361,28 @@
           <div style="font-family:var(--mono);font-size:1.3rem;color:var(--accent2);opacity:.5;margin-bottom:.3rem;">01</div>
           <div style="font-family:var(--mono);font-size:.72rem;letter-spacing:.15em;text-transform:uppercase;color:var(--accent);margin-bottom:.5rem;">Authenticate</div>
           <p style="font-size:.87rem;line-height:1.65;color:var(--text-dim);">
-            Locate valid credentials and obtain a session token. The JWT payload itself holds no flag —
-            but without it, the rest of the system is dark.
+            Find valid credentials. A successful login reveals the first fragment and a session token.
+            Guard the token — every subsequent step requires it.
           </p>
         </div>
 
         <div style="background:var(--bg3); border:1px solid var(--border); border-radius:6px; padding:1rem;">
           <div style="font-family:var(--mono);font-size:1.3rem;color:var(--accent2);opacity:.5;margin-bottom:.3rem;">02</div>
-          <div style="font-family:var(--mono);font-size:.72rem;letter-spacing:.15em;text-transform:uppercase;color:var(--accent);margin-bottom:.5rem;">Traverse</div>
+          <div style="font-family:var(--mono);font-size:.72rem;letter-spacing:.15em;text-transform:uppercase;color:var(--accent);margin-bottom:.5rem;">Escalate</div>
           <p style="font-size:.87rem;line-height:1.65;color:var(--text-dim);">
-            The file reader is guarded, but its filters are flawed. Flag fragments are stored in files named
-            <code style="font-family:var(--mono);color:var(--accent3);background:rgba(192,132,252,.08);padding:.1rem .3rem;border-radius:3px;">.p1</code> and
-            <code style="font-family:var(--mono);color:var(--accent3);background:rgba(192,132,252,.08);padding:.1rem .3rem;border-radius:3px;">.p2</code>
-            outside the app root.
+            The second fragment is locked behind elevated privileges. Your operator token is not enough.
+            Study how the system authenticates. There is no admin login endpoint —
+            the only way in is to become admin.
+          </p>
+        </div>
+
+        <div style="background:var(--bg3); border:1px solid var(--border); border-radius:6px; padding:1rem;">
+          <div style="font-family:var(--mono);font-size:1.3rem;color:var(--accent2);opacity:.5;margin-bottom:.3rem;">03</div>
+          <div style="font-family:var(--mono);font-size:.72rem;letter-spacing:.15em;text-transform:uppercase;color:var(--accent);margin-bottom:.5rem;">Retrieve</div>
+          <p style="font-size:.87rem;line-height:1.65;color:var(--text-dim);">
+            With admin privileges, the file system opens up. The second fragment is stored somewhere
+            outside the application root. The file reader will show you the way —
+            if you know how to ask.
           </p>
         </div>
 
@@ -438,8 +446,26 @@
     </div>
   </div>
 
+  <!-- ── Panel 3: Admin Retrieval ── -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-icon">⬡</div>
+      <span class="panel-title">03 // Classified Retrieval</span>
+    </div>
+    <div class="panel-body">
+      <div class="field-row">
+        <button class="btn btn-primary" onclick="doAdmin()">Execute Request</button>
+        <button class="btn btn-ghost" onclick="doSysInfo()">System Info</button>
+      </div>
+      <div class="terminal" id="admin-out" data-label="stdout"></div>
+    </div>
+    <div class="status-bar">
+      <span><span class="status-dot" style="background:var(--accent2)"></span>&nbsp;&nbsp;elevated clearance required</span>
+    </div>
+  </div>
+
   <footer>
-    ultimate-revenge &nbsp;|&nbsp; app: <span style="color:var(--accent)">ultimate-revenge</span> &nbsp;|&nbsp; port: <span style="color:var(--accent)">3000</span> &nbsp;|&nbsp; no hints. no mercy.
+    ultimate-revenge &nbsp;|&nbsp; app: <span style="color:var(--accent)">ultimate-revenge</span> &nbsp;|&nbsp; no hints. no mercy.
   </footer>
 
 </div>
@@ -478,7 +504,10 @@
       const d = await r.json();
       if (d.token) {
         setToken(d.token);
-        write('auth-out', 'Session established.', 'out-ok');
+        const msg = d.fragment
+          ? 'Session established.\n\nFragment 1: ' + d.fragment
+          : 'Session established.';
+        write('auth-out', msg, 'out-ok');
       } else {
         write('auth-out', JSON.stringify(d, null, 2), 'out-err');
       }
@@ -494,12 +523,40 @@
       const r = await fetch('/api/fs/read?f=' + encodeURIComponent(f), {
         headers: { 'Authorization': 'Bearer ' + _token }
       });
-      const text = await r.text();
+      const t = await r.text();
       const el = document.getElementById('fs-out');
-      el.textContent = text;
+      el.textContent = t;
       document.getElementById('dot-fs').className = 'status-dot live';
     } catch(e) {
       write('fs-out', e.toString(), 'out-err');
+    }
+  }
+
+  async function doAdmin() {
+    const f = prompt('Admin file path:', '');
+    if (f === null) return;
+    write('admin-out', 'Requesting classified file...', 'out-info');
+    try {
+      const r = await fetch('/api/admin/fs/read?f=' + encodeURIComponent(f), {
+        headers: { 'Authorization': 'Bearer ' + _token }
+      });
+      const t = await r.text();
+      write('admin-out', t, r.ok ? 'out-ok' : 'out-warn');
+    } catch(e) {
+      write('admin-out', e.toString(), 'out-err');
+    }
+  }
+
+  async function doSysInfo() {
+    write('admin-out', 'Querying system...', 'out-info');
+    try {
+      const r = await fetch('/api/sys/info', {
+        headers: { 'Authorization': 'Bearer ' + _token }
+      });
+      const d = await r.json();
+      write('admin-out', JSON.stringify(d, null, 2), 'out-info');
+    } catch(e) {
+      write('admin-out', e.toString(), 'out-err');
     }
   }
 </script>
